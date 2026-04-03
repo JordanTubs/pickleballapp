@@ -337,19 +337,72 @@ function App() {
 
   function generateRoundRobinMatches(teamList) {
     const matches = [];
+    const rotatingTeams = [...teamList];
+    const hasBye = rotatingTeams.length % 2 !== 0;
     let matchId = 1;
+    let lastTeamsPlayed = [];
 
-    for (let i = 0; i < teamList.length; i += 1) {
-      for (let j = i + 1; j < teamList.length; j += 1) {
-        matches.push({
-          id: matchId,
-          teamA: teamList[i].displayName,
-          teamB: teamList[j].displayName,
-          winner: '',
-          played: false,
-        });
-        matchId += 1;
+    if (hasBye) {
+      rotatingTeams.push({
+        id: 'bye',
+        displayName: 'BYE',
+      });
+    }
+
+    function teamsOverlap(match, previousTeams) {
+      return previousTeams.includes(match.teamA) || previousTeams.includes(match.teamB);
+    }
+
+    for (let roundNumber = 1; roundNumber < rotatingTeams.length; roundNumber += 1) {
+      const roundMatches = [];
+
+      for (let i = 0; i < rotatingTeams.length / 2; i += 1) {
+        const teamA = rotatingTeams[i];
+        const teamB = rotatingTeams[rotatingTeams.length - 1 - i];
+
+        if (teamA.displayName !== 'BYE' && teamB.displayName !== 'BYE') {
+          roundMatches.push({
+            id: matchId,
+            teamA: teamA.displayName,
+            teamB: teamB.displayName,
+            winner: '',
+            played: false,
+            round: roundNumber,
+          });
+          matchId += 1;
+        }
       }
+
+      // Reorder the round when possible so the same teams do not appear back-to-back.
+      const orderedRoundMatches = [];
+      const remainingMatches = [...roundMatches];
+      let previousTeams = [...lastTeamsPlayed];
+
+      while (remainingMatches.length > 0) {
+        let nextMatchIndex = remainingMatches.findIndex(
+          (match) => !teamsOverlap(match, previousTeams)
+        );
+
+        if (nextMatchIndex === -1) {
+          nextMatchIndex = 0;
+        }
+
+        const nextMatch = remainingMatches.splice(nextMatchIndex, 1)[0];
+        orderedRoundMatches.push(nextMatch);
+        previousTeams = [nextMatch.teamA, nextMatch.teamB];
+      }
+
+      matches.push(...orderedRoundMatches);
+
+      if (orderedRoundMatches.length > 0) {
+        const lastMatchInRound = orderedRoundMatches[orderedRoundMatches.length - 1];
+        lastTeamsPlayed = [lastMatchInRound.teamA, lastMatchInRound.teamB];
+      }
+
+      const fixedTeam = rotatingTeams[0];
+      const movedTeam = rotatingTeams.pop();
+      rotatingTeams.splice(1, 0, movedTeam);
+      rotatingTeams[0] = fixedTeam;
     }
 
     return matches;
