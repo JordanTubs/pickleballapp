@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import './App.css';
+
+const STORAGE_KEY = 'pickleball-match-organizer-state';
 
 function App() {
   const [phase, setPhase] = useState('menu');
@@ -31,6 +33,99 @@ function App() {
 
   const [finalMatch, setFinalMatch] = useState(null);
   const [finalChampion, setFinalChampion] = useState('');
+  const [hasLoadedStorage, setHasLoadedStorage] = useState(false);
+
+  useEffect(() => {
+    const savedState = localStorage.getItem(STORAGE_KEY);
+
+    if (savedState) {
+      try {
+        const parsedState = JSON.parse(savedState);
+
+        setPhase(parsedState.phase || 'menu');
+        setOpenPlayInput(parsedState.openPlayInput || '');
+        setOpenPlayCourtCount(parsedState.openPlayCourtCount || '1');
+        setOpenPlayError(parsedState.openPlayError || '');
+        setOpenPlayTeams(parsedState.openPlayTeams || []);
+        setOpenPlayMatches(parsedState.openPlayMatches || []);
+        setOpenPlayLog(parsedState.openPlayLog || []);
+        setPlayerInput(parsedState.playerInput || '');
+        setTournamentError(parsedState.tournamentError || '');
+        setTeams(parsedState.teams || []);
+        setRoundRobinMatches(parsedState.roundRobinMatches || []);
+        setMatchLog(parsedState.matchLog || []);
+        setBracketMatches(parsedState.bracketMatches || []);
+        setWinnerBracketState(
+          parsedState.winnerBracketState || {
+            currentTeams: [],
+            round: 1,
+            champion: null,
+          }
+        );
+        setLoserBracketState(
+          parsedState.loserBracketState || {
+            currentTeams: [],
+            round: 1,
+            champion: null,
+          }
+        );
+        setFinalMatch(parsedState.finalMatch || null);
+        setFinalChampion(parsedState.finalChampion || '');
+      } catch (error) {
+        console.log('Saved app data could not be loaded.');
+      }
+    }
+
+    setHasLoadedStorage(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedStorage) {
+      return;
+    }
+
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        phase,
+        openPlayInput,
+        openPlayCourtCount,
+        openPlayError,
+        openPlayTeams,
+        openPlayMatches,
+        openPlayLog,
+        playerInput,
+        tournamentError,
+        teams,
+        roundRobinMatches,
+        matchLog,
+        bracketMatches,
+        winnerBracketState,
+        loserBracketState,
+        finalMatch,
+        finalChampion,
+      })
+    );
+  }, [
+    hasLoadedStorage,
+    phase,
+    openPlayInput,
+    openPlayCourtCount,
+    openPlayError,
+    openPlayTeams,
+    openPlayMatches,
+    openPlayLog,
+    playerInput,
+    tournamentError,
+    teams,
+    roundRobinMatches,
+    matchLog,
+    bracketMatches,
+    winnerBracketState,
+    loserBracketState,
+    finalMatch,
+    finalChampion,
+  ]);
 
   function resetApp() {
     setPhase('menu');
@@ -58,6 +153,7 @@ function App() {
     });
     setFinalMatch(null);
     setFinalChampion('');
+    localStorage.removeItem(STORAGE_KEY);
   }
 
   function shuffleArray(array) {
