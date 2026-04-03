@@ -33,6 +33,17 @@ function App() {
 
   const [finalMatch, setFinalMatch] = useState(null);
   const [finalChampion, setFinalChampion] = useState('');
+  const [scoreboardMatch, setScoreboardMatch] = useState(null);
+  const [scoreboardSource, setScoreboardSource] = useState(null);
+  const [scoreboardReturnPhase, setScoreboardReturnPhase] = useState('menu');
+  const [teamAScore, setTeamAScore] = useState(0);
+  const [teamBScore, setTeamBScore] = useState(0);
+  const [servingTeam, setServingTeam] = useState('A');
+  const [serverNumber, setServerNumber] = useState(1);
+  const [scoreboardWinner, setScoreboardWinner] = useState('');
+  const [scoreboardLog, setScoreboardLog] = useState([]);
+  const [scoreUndoStack, setScoreUndoStack] = useState([]);
+  const [finishedGames, setFinishedGames] = useState([]);
   const [hasLoadedStorage, setHasLoadedStorage] = useState(false);
 
   useEffect(() => {
@@ -71,6 +82,17 @@ function App() {
         );
         setFinalMatch(parsedState.finalMatch || null);
         setFinalChampion(parsedState.finalChampion || '');
+        setScoreboardMatch(parsedState.scoreboardMatch || null);
+        setScoreboardSource(parsedState.scoreboardSource || null);
+        setScoreboardReturnPhase(parsedState.scoreboardReturnPhase || 'menu');
+        setTeamAScore(parsedState.teamAScore || 0);
+        setTeamBScore(parsedState.teamBScore || 0);
+        setServingTeam(parsedState.servingTeam || 'A');
+        setServerNumber(parsedState.serverNumber || 1);
+        setScoreboardWinner(parsedState.scoreboardWinner || '');
+        setScoreboardLog(parsedState.scoreboardLog || []);
+        setScoreUndoStack(parsedState.scoreUndoStack || []);
+        setFinishedGames(parsedState.finishedGames || []);
       } catch (error) {
         console.log('Saved app data could not be loaded.');
       }
@@ -104,6 +126,17 @@ function App() {
         loserBracketState,
         finalMatch,
         finalChampion,
+        scoreboardMatch,
+        scoreboardSource,
+        scoreboardReturnPhase,
+        teamAScore,
+        teamBScore,
+        servingTeam,
+        serverNumber,
+        scoreboardWinner,
+        scoreboardLog,
+        scoreUndoStack,
+        finishedGames,
       })
     );
   }, [
@@ -125,6 +158,17 @@ function App() {
     loserBracketState,
     finalMatch,
     finalChampion,
+    scoreboardMatch,
+    scoreboardSource,
+    scoreboardReturnPhase,
+    teamAScore,
+    teamBScore,
+    servingTeam,
+    serverNumber,
+    scoreboardWinner,
+    scoreboardLog,
+    scoreUndoStack,
+    finishedGames,
   ]);
 
   function resetApp() {
@@ -153,6 +197,17 @@ function App() {
     });
     setFinalMatch(null);
     setFinalChampion('');
+    setScoreboardMatch(null);
+    setScoreboardSource(null);
+    setScoreboardReturnPhase('menu');
+    setTeamAScore(0);
+    setTeamBScore(0);
+    setServingTeam('A');
+    setServerNumber(1);
+    setScoreboardWinner('');
+    setScoreboardLog([]);
+    setScoreUndoStack([]);
+    setFinishedGames([]);
     localStorage.removeItem(STORAGE_KEY);
   }
 
@@ -209,25 +264,89 @@ function App() {
       });
     }
 
+    const remainingMatches = [];
     const createdMatches = [];
+    const lastPlayedRound = {};
     let matchId = 1;
+    let currentRound = 1;
+
+    createdTeams.forEach((team) => {
+      lastPlayedRound[team.displayName] = 0;
+    });
 
     for (let i = 0; i < createdTeams.length; i += 1) {
       for (let j = i + 1; j < createdTeams.length; j += 1) {
-        const queueIndex = createdMatches.length;
-
-        createdMatches.push({
+        remainingMatches.push({
           id: matchId,
           teamA: createdTeams[i].displayName,
           teamB: createdTeams[j].displayName,
           winner: '',
           played: false,
-          round: Math.floor(queueIndex / courtTotal) + 1,
-          court: (queueIndex % courtTotal) + 1,
         });
-
         matchId += 1;
       }
+    }
+
+    while (remainingMatches.length > 0) {
+      const teamsUsedThisRound = [];
+      const roundMatches = [];
+
+      while (roundMatches.length < courtTotal) {
+        let bestMatchIndex = -1;
+        let bestScore = -Infinity;
+
+        for (let i = 0; i < remainingMatches.length; i += 1) {
+          const match = remainingMatches[i];
+
+          if (
+            teamsUsedThisRound.includes(match.teamA) ||
+            teamsUsedThisRound.includes(match.teamB)
+          ) {
+            continue;
+          }
+
+          const restScore =
+            (currentRound - lastPlayedRound[match.teamA]) +
+            (currentRound - lastPlayedRound[match.teamB]);
+
+          if (restScore > bestScore) {
+            bestScore = restScore;
+            bestMatchIndex = i;
+          }
+        }
+
+        if (bestMatchIndex === -1) {
+          break;
+        }
+
+        const nextMatch = remainingMatches.splice(bestMatchIndex, 1)[0];
+        teamsUsedThisRound.push(nextMatch.teamA, nextMatch.teamB);
+        roundMatches.push({
+          ...nextMatch,
+          round: currentRound,
+          court: roundMatches.length + 1,
+        });
+      }
+
+      if (roundMatches.length === 0) {
+        const fallbackMatch = remainingMatches.shift();
+
+        if (fallbackMatch) {
+          roundMatches.push({
+            ...fallbackMatch,
+            round: currentRound,
+            court: 1,
+          });
+        }
+      }
+
+      roundMatches.forEach((match) => {
+        lastPlayedRound[match.teamA] = currentRound;
+        lastPlayedRound[match.teamB] = currentRound;
+      });
+
+      createdMatches.push(...roundMatches);
+      currentRound += 1;
     }
 
     setOpenPlayTeams(createdTeams);
@@ -259,6 +378,223 @@ function App() {
       setOpenPlayLog((previousLog) => [
         ...previousLog,
         `Round ${selectedMatch.round} - Court ${selectedMatch.court}: ${winnerName} defeated ${loserName}`,
+      ]);
+    }
+  }
+
+  function getScoreboardSnapshot() {
+    return {
+      teamAScore,
+      teamBScore,
+      servingTeam,
+      serverNumber,
+      scoreboardWinner,
+      scoreboardLog,
+    };
+  }
+
+  function loadScoreboardSnapshot(snapshot) {
+    setTeamAScore(snapshot.teamAScore);
+    setTeamBScore(snapshot.teamBScore);
+    setServingTeam(snapshot.servingTeam);
+    setServerNumber(snapshot.serverNumber);
+    setScoreboardWinner(snapshot.scoreboardWinner);
+    setScoreboardLog(snapshot.scoreboardLog);
+  }
+
+  function resetScoreboardState() {
+    setTeamAScore(0);
+    setTeamBScore(0);
+    setServingTeam('A');
+    setServerNumber(1);
+    setScoreboardWinner('');
+    setScoreboardLog([]);
+    setScoreUndoStack([]);
+  }
+
+  function openScoreboard(match, source, returnPhase) {
+    setScoreboardMatch({
+      id: match.id,
+      teamA: match.teamA,
+      teamB: match.teamB,
+    });
+    setScoreboardSource(source);
+    setScoreboardReturnPhase(returnPhase);
+    setPhase('scoreboard');
+    resetScoreboardState();
+  }
+
+  function updateMatchFromScoreboard(winnerName, scoreText) {
+    if (!scoreboardSource || !scoreboardMatch) {
+      return;
+    }
+
+    if (scoreboardSource.type === 'openPlay') {
+      const updatedOpenPlayMatches = openPlayMatches.map((match) => {
+        if (match.id === scoreboardSource.matchId) {
+          return {
+            ...match,
+            winner: winnerName,
+            played: true,
+          };
+        }
+
+        return match;
+      });
+
+      setOpenPlayMatches(updatedOpenPlayMatches);
+
+      const playedMatch = updatedOpenPlayMatches.find((match) => match.id === scoreboardSource.matchId);
+
+      if (playedMatch) {
+        const loserName = playedMatch.teamA === winnerName ? playedMatch.teamB : playedMatch.teamA;
+
+        setOpenPlayLog((previousLog) => [
+          ...previousLog,
+          `Round ${playedMatch.round} - Court ${playedMatch.court}: ${winnerName} defeated ${loserName} (${scoreText})`,
+        ]);
+      }
+    }
+
+    if (scoreboardSource.type === 'roundRobin') {
+      const updatedMatches = roundRobinMatches.map((match) => {
+        if (match.id === scoreboardSource.matchId) {
+          return {
+            ...match,
+            winner: winnerName,
+            played: true,
+          };
+        }
+
+        return match;
+      });
+
+      setRoundRobinMatches(updatedMatches);
+
+      const playedMatch = updatedMatches.find((match) => match.id === scoreboardSource.matchId);
+
+      if (playedMatch) {
+        const loserName = playedMatch.teamA === winnerName ? playedMatch.teamB : playedMatch.teamA;
+
+        setMatchLog((previousLog) => [
+          ...previousLog,
+          `${winnerName} defeated ${loserName} (${scoreText})`,
+        ]);
+      }
+    }
+
+    if (scoreboardSource.type === 'bracket') {
+      recordBracketWinner(scoreboardSource.matchId, winnerName);
+    }
+
+    if (scoreboardSource.type === 'final') {
+      recordFinalWinner(winnerName);
+    }
+  }
+
+  function finishScoreboardGame(winnerName) {
+    if (!scoreboardMatch) {
+      return;
+    }
+
+    const scoreText = `${teamAScore}-${teamBScore}`;
+
+    setScoreboardWinner(winnerName);
+    setFinishedGames((previousGames) => [
+      ...previousGames,
+      {
+        id: `${scoreboardMatch.id}-${Date.now()}`,
+        teamA: scoreboardMatch.teamA,
+        teamB: scoreboardMatch.teamB,
+        winner: winnerName,
+        scoreText,
+      },
+    ]);
+
+    updateMatchFromScoreboard(winnerName, scoreText);
+  }
+
+  function handleRallyWin(rallyWinner) {
+    if (!scoreboardMatch || scoreboardWinner) {
+      return;
+    }
+
+    setScoreUndoStack((previousStack) => [...previousStack, getScoreboardSnapshot()]);
+
+    const winnerTeamName =
+      rallyWinner === 'A' ? scoreboardMatch.teamA : scoreboardMatch.teamB;
+
+    if (servingTeam === rallyWinner) {
+      if (rallyWinner === 'A') {
+        const nextScore = teamAScore + 1;
+        setTeamAScore(nextScore);
+        setScoreboardLog((previousLog) => [
+          ...previousLog,
+          `${winnerTeamName} won the rally and scored. Server ${serverNumber} stays in.`,
+        ]);
+
+        if (nextScore >= 11 && nextScore - teamBScore >= 2) {
+          finishScoreboardGame(scoreboardMatch.teamA);
+        }
+      } else {
+        const nextScore = teamBScore + 1;
+        setTeamBScore(nextScore);
+        setScoreboardLog((previousLog) => [
+          ...previousLog,
+          `${winnerTeamName} won the rally and scored. Server ${serverNumber} stays in.`,
+        ]);
+
+        if (nextScore >= 11 && nextScore - teamAScore >= 2) {
+          finishScoreboardGame(scoreboardMatch.teamB);
+        }
+      }
+    } else if (serverNumber === 1) {
+      setServerNumber(2);
+      setScoreboardLog((previousLog) => [
+        ...previousLog,
+        `${winnerTeamName} won the rally. No point scored. Server moves to player 2.`,
+      ]);
+    } else {
+      const nextServingTeam = servingTeam === 'A' ? 'B' : 'A';
+      setServingTeam(nextServingTeam);
+      setServerNumber(1);
+      setScoreboardLog((previousLog) => [
+        ...previousLog,
+        `${winnerTeamName} won the rally. No point scored. Serve switches to Team ${nextServingTeam}.`,
+      ]);
+    }
+  }
+
+  function undoScoreboardAction() {
+    if (scoreUndoStack.length === 0) {
+      return;
+    }
+
+    const previousState = scoreUndoStack[scoreUndoStack.length - 1];
+    setScoreUndoStack((previousStack) => previousStack.slice(0, previousStack.length - 1));
+    loadScoreboardSnapshot(previousState);
+  }
+
+  function manualSwitchServer() {
+    if (!scoreboardMatch || scoreboardWinner) {
+      return;
+    }
+
+    setScoreUndoStack((previousStack) => [...previousStack, getScoreboardSnapshot()]);
+
+    if (serverNumber === 1) {
+      setServerNumber(2);
+      setScoreboardLog((previousLog) => [
+        ...previousLog,
+        'Manual switch: moved to server 2.',
+      ]);
+    } else {
+      const nextServingTeam = servingTeam === 'A' ? 'B' : 'A';
+      setServingTeam(nextServingTeam);
+      setServerNumber(1);
+      setScoreboardLog((previousLog) => [
+        ...previousLog,
+        `Manual switch: serve moved to Team ${nextServingTeam}, server 1.`,
       ]);
     }
   }
@@ -704,6 +1040,13 @@ function App() {
   }
 
   const openPlayStandings = getOpenPlayStandings();
+  const openPlayMatchesByCourt = Array.from(
+    { length: Number(openPlayCourtCount) || 0 },
+    (_, index) => ({
+      court: index + 1,
+      matches: openPlayMatches.filter((match) => match.court === index + 1),
+    })
+  ).filter((courtGroup) => courtGroup.matches.length > 0);
   const standings = getStandings(roundRobinMatches);
   const allRoundRobinPlayed =
     roundRobinMatches.length > 0 && roundRobinMatches.every((match) => match.played);
@@ -742,10 +1085,27 @@ function App() {
               >
                 Tournament Mode
               </button>
+              <button className="main-button" onClick={() => setPhase('scoreboard')}>
+                Scoreboard Mode
+              </button>
               <button className="secondary-button" onClick={resetApp}>
                 Reset App
               </button>
             </div>
+            {finishedGames.length > 0 && (
+              <div className="log-box">
+                <h3 className="sub-title">Finished Scoreboard Games</h3>
+                {finishedGames
+                  .slice()
+                  .reverse()
+                  .slice(0, 5)
+                  .map((game) => (
+                    <div className="log-item" key={game.id}>
+                      {game.teamA} vs {game.teamB} - {game.winner} won ({game.scoreText})
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -802,35 +1162,53 @@ function App() {
               <>
                 <div className="result-box">
                   <h3 className="sub-title">Open Play Match Schedule</h3>
-                  <div className="match-list">
-                    {openPlayMatches.map((match) => (
-                      <div className="match-card" key={match.id}>
-                        <div className="match-top-row">
-                          <span className="match-badge">Round {match.round}</span>
-                          <span className="match-badge">Court {match.court}</span>
-                        </div>
-                        <div className="match-name">
-                          {match.teamA} vs {match.teamB}
-                        </div>
+                  <div className="court-groups">
+                    {openPlayMatchesByCourt.map((courtGroup) => (
+                      <div className="court-column" key={courtGroup.court}>
+                        <div className="court-header">Court {courtGroup.court}</div>
+                        <div className="match-list">
+                          {courtGroup.matches.map((match) => (
+                            <div className="match-card" key={match.id}>
+                              <div className="match-top-row">
+                                <span className="match-badge">Round {match.round}</span>
+                              </div>
+                              <div className="match-name">
+                                {match.teamA} vs {match.teamB}
+                              </div>
 
-                        {!match.played ? (
-                          <div className="button-group">
-                            <button
-                              className="small-button"
-                              onClick={() => recordOpenPlayWinner(match.id, match.teamA)}
-                            >
-                              {match.teamA} Wins
-                            </button>
-                            <button
-                              className="small-button"
-                              onClick={() => recordOpenPlayWinner(match.id, match.teamB)}
-                            >
-                              {match.teamB} Wins
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="winner-text">Winner: {match.winner}</div>
-                        )}
+                              {!match.played ? (
+                                <div className="button-group">
+                                  <button
+                                    className="secondary-button"
+                                    onClick={() =>
+                                      openScoreboard(
+                                        match,
+                                        { type: 'openPlay', matchId: match.id },
+                                        'openPlay'
+                                      )
+                                    }
+                                  >
+                                    Open Scoreboard
+                                  </button>
+                                  <button
+                                    className="small-button"
+                                    onClick={() => recordOpenPlayWinner(match.id, match.teamA)}
+                                  >
+                                    {match.teamA} Wins
+                                  </button>
+                                  <button
+                                    className="small-button"
+                                    onClick={() => recordOpenPlayWinner(match.id, match.teamB)}
+                                  >
+                                    {match.teamB} Wins
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="winner-text">Winner: {match.winner}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -944,6 +1322,18 @@ function App() {
                   {!match.played ? (
                     <div className="button-group">
                       <button
+                        className="secondary-button"
+                        onClick={() =>
+                          openScoreboard(
+                            match,
+                            { type: 'roundRobin', matchId: match.id },
+                            'roundRobinView'
+                          )
+                        }
+                      >
+                        Open Scoreboard
+                      </button>
+                      <button
                         className="small-button"
                         onClick={() => recordRoundRobinWinner(match.id, match.teamA)}
                       >
@@ -1037,6 +1427,18 @@ function App() {
                       {!match.played ? (
                         <div className="button-group">
                           <button
+                            className="secondary-button"
+                            onClick={() =>
+                              openScoreboard(
+                                match,
+                                { type: 'bracket', matchId: match.id },
+                                'bracketView'
+                              )
+                            }
+                          >
+                            Open Scoreboard
+                          </button>
+                          <button
                             className="small-button"
                             onClick={() => recordBracketWinner(match.id, match.teamA)}
                           >
@@ -1076,6 +1478,18 @@ function App() {
                       </div>
                       {!match.played ? (
                         <div className="button-group">
+                          <button
+                            className="secondary-button"
+                            onClick={() =>
+                              openScoreboard(
+                                match,
+                                { type: 'bracket', matchId: match.id },
+                                'bracketView'
+                              )
+                            }
+                          >
+                            Open Scoreboard
+                          </button>
                           <button
                             className="small-button"
                             onClick={() => recordBracketWinner(match.id, match.teamA)}
@@ -1132,6 +1546,18 @@ function App() {
                 {!finalMatch.played ? (
                   <div className="button-group">
                     <button
+                      className="secondary-button"
+                      onClick={() =>
+                        openScoreboard(
+                          finalMatch,
+                          { type: 'final', matchId: finalMatch.id },
+                          'finalResult'
+                        )
+                      }
+                    >
+                      Open Scoreboard
+                    </button>
+                    <button
                       className="small-button"
                       onClick={() => recordFinalWinner(finalMatch.teamA)}
                     >
@@ -1164,6 +1590,106 @@ function App() {
                 Reset App
               </button>
             </div>
+          </div>
+        )}
+
+        {phase === 'scoreboard' && (
+          <div className="section">
+            <h2 className="section-title">Scoreboard Mode</h2>
+
+            {!scoreboardMatch ? (
+              <div className="result-box">
+                <p className="empty-text">
+                  Open a match from Open Play or Tournament Mode to use the live scoreboard.
+                </p>
+                <div className="button-group">
+                  <button className="secondary-button" onClick={() => setPhase('menu')}>
+                    Back to Menu
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="result-box scoreboard-box">
+                  <div className="scoreboard-match-name">
+                    {scoreboardMatch.teamA} vs {scoreboardMatch.teamB}
+                  </div>
+
+                  <div className="scoreboard-grid">
+                    <div className={`score-team-card ${servingTeam === 'A' ? 'active-team' : ''}`}>
+                      <h3 className="sub-title">{scoreboardMatch.teamA}</h3>
+                      <div className="score-number">{teamAScore}</div>
+                    </div>
+
+                    <div className="score-details">
+                      <div className="match-badge">Serving Team {servingTeam}</div>
+                      <div className="match-badge">Server {serverNumber}</div>
+                      {scoreboardWinner && (
+                        <div className="champion-box">Winner: {scoreboardWinner}</div>
+                      )}
+                    </div>
+
+                    <div className={`score-team-card ${servingTeam === 'B' ? 'active-team' : ''}`}>
+                      <h3 className="sub-title">{scoreboardMatch.teamB}</h3>
+                      <div className="score-number">{teamBScore}</div>
+                    </div>
+                  </div>
+
+                  <div className="button-group">
+                    <button className="main-button" onClick={() => handleRallyWin('A')}>
+                      Team A Rally Win
+                    </button>
+                    <button className="main-button" onClick={() => handleRallyWin('B')}>
+                      Team B Rally Win
+                    </button>
+                    <button className="secondary-button" onClick={undoScoreboardAction}>
+                      Undo
+                    </button>
+                    <button className="secondary-button" onClick={resetScoreboardState}>
+                      Reset Scoreboard
+                    </button>
+                    <button className="secondary-button" onClick={manualSwitchServer}>
+                      Manual Switch Server
+                    </button>
+                    <button className="secondary-button" onClick={() => setPhase(scoreboardReturnPhase)}>
+                      Back to Match
+                    </button>
+                  </div>
+                </div>
+
+                <div className="log-box">
+                  <h3 className="sub-title">Rally History</h3>
+                  {scoreboardLog.length === 0 ? (
+                    <p className="empty-text">No rallies recorded yet.</p>
+                  ) : (
+                    scoreboardLog
+                      .slice()
+                      .reverse()
+                      .map((logItem, index) => (
+                        <div className="log-item" key={`${logItem}-${index}`}>
+                          {logItem}
+                        </div>
+                      ))
+                  )}
+                </div>
+
+                <div className="log-box">
+                  <h3 className="sub-title">Finished Games</h3>
+                  {finishedGames.length === 0 ? (
+                    <p className="empty-text">No finished games yet.</p>
+                  ) : (
+                    finishedGames
+                      .slice()
+                      .reverse()
+                      .map((game) => (
+                        <div className="log-item" key={game.id}>
+                          {game.teamA} vs {game.teamB} - {game.winner} won ({game.scoreText})
+                        </div>
+                      ))
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
