@@ -336,76 +336,58 @@ function App() {
   }
 
   function generateRoundRobinMatches(teamList) {
-    const matches = [];
-    const rotatingTeams = [...teamList];
-    const hasBye = rotatingTeams.length % 2 !== 0;
+    const allMatches = [];
+    const teamLastPlayedIndex = {};
+    const scheduledMatches = [];
     let matchId = 1;
-    let lastTeamsPlayed = [];
 
-    if (hasBye) {
-      rotatingTeams.push({
-        id: 'bye',
-        displayName: 'BYE',
-      });
+    for (let i = 0; i < teamList.length; i += 1) {
+      teamLastPlayedIndex[teamList[i].displayName] = -1000;
+
+      for (let j = i + 1; j < teamList.length; j += 1) {
+        allMatches.push({
+          id: matchId,
+          teamA: teamList[i].displayName,
+          teamB: teamList[j].displayName,
+          winner: '',
+          played: false,
+        });
+        matchId += 1;
+      }
     }
 
-    function teamsOverlap(match, previousTeams) {
-      return previousTeams.includes(match.teamA) || previousTeams.includes(match.teamB);
-    }
+    while (allMatches.length > 0) {
+      let bestMatchIndex = 0;
+      let bestScore = -Infinity;
 
-    for (let roundNumber = 1; roundNumber < rotatingTeams.length; roundNumber += 1) {
-      const roundMatches = [];
+      for (let i = 0; i < allMatches.length; i += 1) {
+        const match = allMatches[i];
+        const lastPlayedA = teamLastPlayedIndex[match.teamA];
+        const lastPlayedB = teamLastPlayedIndex[match.teamB];
+        const restScore =
+          (scheduledMatches.length - lastPlayedA) + (scheduledMatches.length - lastPlayedB);
+        const consecutivePenalty =
+          lastPlayedA === scheduledMatches.length - 1 || lastPlayedB === scheduledMatches.length - 1
+            ? 1000
+            : 0;
+        const score = restScore - consecutivePenalty;
 
-      for (let i = 0; i < rotatingTeams.length / 2; i += 1) {
-        const teamA = rotatingTeams[i];
-        const teamB = rotatingTeams[rotatingTeams.length - 1 - i];
-
-        if (teamA.displayName !== 'BYE' && teamB.displayName !== 'BYE') {
-          roundMatches.push({
-            id: matchId,
-            teamA: teamA.displayName,
-            teamB: teamB.displayName,
-            winner: '',
-            played: false,
-            round: roundNumber,
-          });
-          matchId += 1;
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatchIndex = i;
         }
       }
 
-      // Reorder the round when possible so the same teams do not appear back-to-back.
-      const orderedRoundMatches = [];
-      const remainingMatches = [...roundMatches];
-      let previousTeams = [...lastTeamsPlayed];
-
-      while (remainingMatches.length > 0) {
-        let nextMatchIndex = remainingMatches.findIndex(
-          (match) => !teamsOverlap(match, previousTeams)
-        );
-
-        if (nextMatchIndex === -1) {
-          nextMatchIndex = 0;
-        }
-
-        const nextMatch = remainingMatches.splice(nextMatchIndex, 1)[0];
-        orderedRoundMatches.push(nextMatch);
-        previousTeams = [nextMatch.teamA, nextMatch.teamB];
-      }
-
-      matches.push(...orderedRoundMatches);
-
-      if (orderedRoundMatches.length > 0) {
-        const lastMatchInRound = orderedRoundMatches[orderedRoundMatches.length - 1];
-        lastTeamsPlayed = [lastMatchInRound.teamA, lastMatchInRound.teamB];
-      }
-
-      const fixedTeam = rotatingTeams[0];
-      const movedTeam = rotatingTeams.pop();
-      rotatingTeams.splice(1, 0, movedTeam);
-      rotatingTeams[0] = fixedTeam;
+      const nextMatch = allMatches.splice(bestMatchIndex, 1)[0];
+      scheduledMatches.push(nextMatch);
+      teamLastPlayedIndex[nextMatch.teamA] = scheduledMatches.length - 1;
+      teamLastPlayedIndex[nextMatch.teamB] = scheduledMatches.length - 1;
     }
 
-    return matches;
+    return scheduledMatches.map((match, index) => ({
+      ...match,
+      round: index + 1,
+    }));
   }
 
   function startRoundRobin() {
